@@ -1,4 +1,4 @@
-# Stratigo v2.1 — Safer column handling + full feature set
+# Stratigo v2.1.1 — Stability Fixes + Page Title + Column Safety
 
 import streamlit as st
 import pandas as pd
@@ -7,10 +7,11 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
+# Page title & layout
 st.set_page_config(page_title="Stratigo", layout="wide")
-st.title("📊 Stratigo Project Portfolio Manager")
+st.title("📊 Stratigo")
 
-# --- Password check ---
+# --- Auth ---
 def check_password():
     def password_entered():
         if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
@@ -29,7 +30,7 @@ def check_password():
 
 check_password()
 
-# --- Google Sheets setup ---
+# --- Sheets Setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
@@ -124,31 +125,42 @@ def render_dashboard():
         with st.expander(f"🔎 {row.get('Project Name', 'Unnamed')}"):
             st.write(f"Sponsor: **{row.get('Sponsor', 'N/A')}**")
             st.write(f"Timeframe: {row.get('Timeframe / Phases', 'N/A')}")
-            st.write(f"Budget: ${row.get('Budget', 0):,.0f}, Spend: ${row.get('Spend to Date', 0):,.0f}, ETC: ${row.get('Estimate to Complete', 0):,.0f}")
+            st.write(f"Budget: ${row.get('Budget', 0):,.0f}, _Spend_: ${row.get('Spend to Date', 0):,.0f}, ETC: ${row.get('Estimate to Complete', 0):,.0f}")
             if st.button(f"✏️ Edit '{row.get('Project Name', 'Project')}'", key=f"edit_{i}"):
                 st.session_state["edit_index"] = i
-                st.experimental_rerun()
+                st.rerun()
 
 def render_reports():
     st.subheader("📊 Reports")
-    report_type = st.selectbox("Choose report:", ["Budget vs Spend", "Benefits Overview", "Timeline Summary"])
-
     df = pd.DataFrame(sheet.get_all_records())
     if df.empty:
         st.warning("No data available.")
         return
 
-    if report_type == "Budget vs Spend":
-        st.bar_chart(df.set_index("Project Name")[["Budget", "Spend to Date"]])
-    elif report_type == "Benefits Overview":
-        df["# Benefits"] = df["Benefits"].str.split("\n").apply(len)
-        st.bar_chart(df.set_index("Project Name")["# Benefits"])
-    elif report_type == "Timeline Summary":
-        df["Start Date"] = pd.to_datetime(df["Start Date"])
-        df["Finish Date"] = pd.to_datetime(df["Finish Date"])
-        st.dataframe(df[["Project Name", "Start Date", "Finish Date"]].sort_values("Start Date"))
+    report_type = st.selectbox("Choose report:", ["Budget vs Spend", "Benefits Overview", "Timeline Summary"])
 
-# --- Navigation handler ---
+    if report_type == "Budget vs Spend":
+        if "Project Name" in df.columns and "Budget" in df.columns and "Spend to Date" in df.columns:
+            st.bar_chart(df.set_index("Project Name")[["Budget", "Spend to Date"]])
+        else:
+            st.error("Missing 'Budget' or 'Spend to Date' columns.")
+
+    elif report_type == "Benefits Overview":
+        if "Benefits" in df.columns:
+            df["# Benefits"] = df["Benefits"].str.split("\n").apply(len)
+            st.bar_chart(df.set_index("Project Name")["# Benefits"])
+        else:
+            st.error("Missing 'Benefits' column.")
+
+    elif report_type == "Timeline Summary":
+        if "Start Date" in df.columns and "Finish Date" in df.columns:
+            df["Start Date"] = pd.to_datetime(df["Start Date"], errors='coerce')
+            df["Finish Date"] = pd.to_datetime(df["Finish Date"], errors='coerce')
+            st.dataframe(df[["Project Name", "Start Date", "Finish Date"]].sort_values("Start Date"))
+        else:
+            st.error("Missing 'Start Date' or 'Finish Date' columns.")
+
+# --- Routing ---
 if "edit_index" in st.session_state:
     render_project_form(st.session_state.pop("edit_index"))
 elif menu == "➕ Add Project":
