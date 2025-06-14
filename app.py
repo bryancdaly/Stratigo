@@ -5,12 +5,16 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
+# Page settings
+st.set_page_config(page_title="Stratigo", layout="wide")
+st.title("📊 Stratigo Project Portfolio Manager")
+
 # --- Simple password protection ---
 def check_password():
     def password_entered():
         if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # cleanup
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
@@ -24,43 +28,31 @@ def check_password():
 
 check_password()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# App config
-st.set_page_config(page_title="Stratigo Project Tracker", layout="wide")
-st.title("📊 Stratigo Project Portfolio Tracker")
-
-# Use Streamlit secrets to load credentials
+# --- Google Sheets setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
 gc = gspread.authorize(credentials)
-
-# Connect to worksheet
 sheet = gc.open_by_key(st.secrets["GOOGLE_SHEET_KEY"]).worksheet("Projects")
 
-# Sidebar navigation
+# --- Sidebar menu ---
 menu = st.sidebar.radio("Menu", ["➕ Add New Project", "📋 Portfolio Dashboard"])
 
-# Table headers (must match the Google Sheet)
-headers = [
-    "Project Name", "Sponsor", "Start Date", "Finish Date", "Timeframe",
-    "Budget", "Spend to Date", "Estimate to Complete",
-    "Key Deliverables", "Scope", "Benefits"
-]
+# --- Helper for editable list sections ---
+def edit_list(label, key_prefix):
+    items = st.session_state.get(f"{key_prefix}_items", [""])
+    updated_items = []
+    for i, item in enumerate(items):
+        cols = st.columns([8, 1])
+        text = cols[0].text_input(f"{label} {i+1}", value=item, key=f"{key_prefix}_{i}")
+        if not cols[1].button("🗑", key=f"remove_{key_prefix}_{i}"):
+            updated_items.append(text)
+    if st.button(f"➕ Add {label}", key=f"add_{key_prefix}"):
+        updated_items.append("")
+    st.session_state[f"{key_prefix}_items"] = updated_items
+    return "\n".join(i for i in updated_items if i.strip())
 
-# --- Add Project Form ---
+# --- Add New Project Form ---
 if menu == "➕ Add New Project":
     st.subheader("Add a New Project")
 
@@ -79,8 +71,12 @@ if menu == "➕ Add New Project":
             spend_to_date = st.number_input("Spend to Date ($)", min_value=0.0, step=1000.0)
             estimate_to_complete = st.number_input("Estimate to Complete ($)", min_value=0.0, step=1000.0)
 
-        key_deliverables = st.text_area("Key Deliverables")
-        scope = st.text_area("Scope")
+        st.markdown("### ✏️ Key Deliverables")
+        key_deliverables = edit_list("Deliverable", "deliverables")
+
+        st.markdown("### ✏️ Scope")
+        scope = edit_list("Scope Item", "scope")
+
         benefits = st.text_area("Expected Benefits")
 
         submitted = st.form_submit_button("Save Project")
@@ -94,9 +90,9 @@ if menu == "➕ Add New Project":
         sheet.append_row(row)
         st.success("✅ Project saved successfully!")
 
-# --- Dashboard View ---
+# --- Portfolio Dashboard ---
 elif menu == "📋 Portfolio Dashboard":
-    st.subheader("📋 All Projects")
+    st.subheader("📋 Project Portfolio Dashboard")
 
     try:
         data = sheet.get_all_records()
@@ -106,17 +102,15 @@ elif menu == "📋 Portfolio Dashboard":
             df = pd.DataFrame(data)
             st.dataframe(df)
 
-            # Budget comparison
             st.subheader("💰 Budget vs Spend")
-            bar_data = df[["Project Name", "Budget", "Spend to Date"]].set_index("Project Name")
-            st.bar_chart(bar_data)
+            chart_data = df[["Project Name", "Budget", "Spend to Date"]].set_index("Project Name")
+            st.bar_chart(chart_data)
 
-            # Timeline table
-            st.subheader("📅 Timeline")
+            st.subheader("📅 Project Timeline")
             df["Start Date"] = pd.to_datetime(df["Start Date"])
             df["Finish Date"] = pd.to_datetime(df["Finish Date"])
             timeline = df[["Project Name", "Start Date", "Finish Date"]].sort_values("Start Date")
             st.dataframe(timeline)
 
     except Exception as e:
-        st.error(f"⚠️ Error loading data: {e}")
+        st.error(f"⚠️ Error loading project data: {e}")
