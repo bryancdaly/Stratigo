@@ -1,4 +1,4 @@
-# Stratigo v2.1.1 — Stability Fixes + Page Title + Column Safety
+# Stratigo v2.2 — Home Landing Page + Bug Fixes + Blue/White Styling
 
 import streamlit as st
 import pandas as pd
@@ -7,11 +7,15 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
-# Page title & layout
+# --------------------
+# Page Config & Theme
+# --------------------
 st.set_page_config(page_title="Stratigo", layout="wide")
-st.title("📊 Stratigo")
+st.markdown("<h1 style='text-align: center; color: #154360;'>📊 Stratigo</h1>", unsafe_allow_html=True)
 
-# --- Auth ---
+# --------------------
+# Password Protection
+# --------------------
 def check_password():
     def password_entered():
         if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
@@ -30,15 +34,23 @@ def check_password():
 
 check_password()
 
-# --- Sheets Setup ---
+# --------------------
+# Google Sheets Setup
+# --------------------
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
 gc = gspread.authorize(credentials)
 sheet = gc.open_by_key(st.secrets["GOOGLE_SHEET_KEY"]).worksheet("Projects")
 
-menu = st.sidebar.radio("📁 Menu", ["➕ Add Project", "📋 Portfolio", "📊 Reports"])
+# --------------------
+# Navigation
+# --------------------
+menu = st.sidebar.radio("📁 Navigation", ["🏠 Home", "➕ Add Project", "📋 Portfolio", "📊 Reports"])
 
+# --------------------
+# Shared Functions
+# --------------------
 def edit_list(label, key_prefix):
     items = st.session_state.get(f"{key_prefix}_items", [""])
     updated_items = []
@@ -55,6 +67,30 @@ def save_row(values, row_idx=None):
     else:
         sheet.update(f"A{row_idx+2}", [values])
 
+def cast_to_float(val):
+    try:
+        return float(str(val).replace(",", ""))
+    except:
+        return 0.0
+
+# --------------------
+# Home Page
+# --------------------
+def render_home():
+    st.markdown("### Welcome to **Stratigo** — your simple, cloud-based Project Portfolio Tracker.")
+    st.write("Use the tiles below to manage your portfolio:")
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.button("➕ Add Project", use_container_width=True, on_click=lambda: st.session_state.update(page="add"))
+    with col2:
+        st.button("📋 View Portfolio", use_container_width=True, on_click=lambda: st.session_state.update(page="portfolio"))
+    with col3:
+        st.button("📊 View Reports", use_container_width=True, on_click=lambda: st.session_state.update(page="reports"))
+
+# --------------------
+# Add or Edit Project
+# --------------------
 def render_project_form(edit_index=None):
     is_edit = edit_index is not None
     st.subheader("✏️ Edit Project" if is_edit else "➕ Add New Project")
@@ -78,9 +114,9 @@ def render_project_form(edit_index=None):
             timeframe = st.text_input("Timeframe / Phases", value=row.get("Timeframe / Phases", ""))
 
         with col2:
-            budget = st.number_input("Total Budget ($)", min_value=0.0, step=1000.0, value=row.get("Budget", 0.0))
-            spend_to_date = st.number_input("Spend to Date ($)", min_value=0.0, step=1000.0, value=row.get("Spend to Date", 0.0))
-            estimate_to_complete = st.number_input("Estimate to Complete ($)", min_value=0.0, step=1000.0, value=row.get("Estimate to Complete", 0.0))
+            budget = st.number_input("Total Budget ($)", value=cast_to_float(row.get("Budget", 0)))
+            spend = st.number_input("Spend to Date ($)", value=cast_to_float(row.get("Spend to Date", 0)))
+            etc = st.number_input("Estimate to Complete ($)", value=cast_to_float(row.get("Estimate to Complete", 0)))
 
         st.markdown("### 📦 Deliverables")
         key_deliverables = edit_list("Deliverable", "deliverables")
@@ -96,7 +132,7 @@ def render_project_form(edit_index=None):
     if submitted:
         row_data = [
             project_name, sponsor, str(start_date), str(finish_date), timeframe,
-            budget, spend_to_date, estimate_to_complete,
+            budget, spend, etc,
             key_deliverables, scope, benefits
         ]
         save_row(row_data, edit_index)
@@ -111,6 +147,9 @@ def render_project_form(edit_index=None):
     if col_b.button("➕ Add Benefit"):
         st.session_state["benefits_items"] = st.session_state.get("benefits_items", []) + [""]
 
+# --------------------
+# Dashboard View
+# --------------------
 def render_dashboard():
     st.subheader("📋 Project Portfolio")
     records = sheet.get_all_records()
@@ -130,6 +169,9 @@ def render_dashboard():
                 st.session_state["edit_index"] = i
                 st.rerun()
 
+# --------------------
+# Reporting
+# --------------------
 def render_reports():
     st.subheader("📊 Reports")
     df = pd.DataFrame(sheet.get_all_records())
@@ -143,11 +185,11 @@ def render_reports():
         if "Project Name" in df.columns and "Budget" in df.columns and "Spend to Date" in df.columns:
             st.bar_chart(df.set_index("Project Name")[["Budget", "Spend to Date"]])
         else:
-            st.error("Missing 'Budget' or 'Spend to Date' columns.")
+            st.error("Missing required columns.")
 
     elif report_type == "Benefits Overview":
         if "Benefits" in df.columns:
-            df["# Benefits"] = df["Benefits"].str.split("\n").apply(len)
+            df["# Benefits"] = df["Benefits"].astype(str).str.split("\n").apply(len)
             st.bar_chart(df.set_index("Project Name")["# Benefits"])
         else:
             st.error("Missing 'Benefits' column.")
@@ -158,11 +200,23 @@ def render_reports():
             df["Finish Date"] = pd.to_datetime(df["Finish Date"], errors='coerce')
             st.dataframe(df[["Project Name", "Start Date", "Finish Date"]].sort_values("Start Date"))
         else:
-            st.error("Missing 'Start Date' or 'Finish Date' columns.")
+            st.error("Missing date columns.")
 
-# --- Routing ---
+# --------------------
+# App Router
+# --------------------
 if "edit_index" in st.session_state:
     render_project_form(st.session_state.pop("edit_index"))
+elif "page" in st.session_state:
+    page = st.session_state.pop("page")
+    if page == "add":
+        render_project_form()
+    elif page == "portfolio":
+        render_dashboard()
+    elif page == "reports":
+        render_reports()
+elif menu == "🏠 Home":
+    render_home()
 elif menu == "➕ Add Project":
     render_project_form()
 elif menu == "📋 Portfolio":
