@@ -5,6 +5,38 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
+# --- Simple password protection ---
+def check_password():
+    def password_entered():
+        if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # cleanup
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.text_input("Enter password:", type="password", on_change=password_entered, key="password")
+        st.stop()
+    elif not st.session_state["password_correct"]:
+        st.error("❌ Incorrect password")
+        st.text_input("Enter password:", type="password", on_change=password_entered, key="password")
+        st.stop()
+
+check_password()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # App config
 st.set_page_config(page_title="Stratigo Project Tracker", layout="wide")
 st.title("📊 Stratigo Project Portfolio Tracker")
