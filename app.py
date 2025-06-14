@@ -5,11 +5,11 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
-# Page settings
-st.set_page_config(page_title="Stratigo", layout="wide")
+# App setup
+st.set_page_config(page_title="Stratigo Project Tracker", layout="wide")
 st.title("📊 Stratigo Project Portfolio Manager")
 
-# --- Simple password protection ---
+# --- Password protection ---
 def check_password():
     def password_entered():
         if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
@@ -28,31 +28,28 @@ def check_password():
 
 check_password()
 
-# --- Google Sheets setup ---
+# --- Google Sheets authentication ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
 credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
 gc = gspread.authorize(credentials)
 sheet = gc.open_by_key(st.secrets["GOOGLE_SHEET_KEY"]).worksheet("Projects")
 
-# --- Sidebar menu ---
+# --- Sidebar Navigation ---
 menu = st.sidebar.radio("Menu", ["➕ Add New Project", "📋 Portfolio Dashboard"])
 
-# --- Helper for editable list sections ---
+# --- Dynamic List Input Function (safe for use in form) ---
 def edit_list(label, key_prefix):
     items = st.session_state.get(f"{key_prefix}_items", [""])
     updated_items = []
+
     for i, item in enumerate(items):
-        cols = st.columns([8, 1])
-        text = cols[0].text_input(f"{label} {i+1}", value=item, key=f"{key_prefix}_{i}")
-        if not cols[1].button("🗑", key=f"remove_{key_prefix}_{i}"):
-            updated_items.append(text)
-    if st.button(f"➕ Add {label}", key=f"add_{key_prefix}"):
-        updated_items.append("")
+        updated_items.append(st.text_input(f"{label} {i+1}", value=item, key=f"{key_prefix}_{i}"))
+
     st.session_state[f"{key_prefix}_items"] = updated_items
     return "\n".join(i for i in updated_items if i.strip())
 
-# --- Add New Project Form ---
+# --- Add Project Form ---
 if menu == "➕ Add New Project":
     st.subheader("Add a New Project")
 
@@ -89,6 +86,17 @@ if menu == "➕ Add New Project":
         ]
         sheet.append_row(row)
         st.success("✅ Project saved successfully!")
+
+# --- Add/Remove Buttons OUTSIDE the form ---
+st.markdown("### ➕ Manage Deliverables & Scope")
+
+col_d, col_s = st.columns(2)
+
+if col_d.button("➕ Add Deliverable"):
+    st.session_state["deliverables_items"] = st.session_state.get("deliverables_items", []) + [""]
+
+if col_s.button("➕ Add Scope Item"):
+    st.session_state["scope_items"] = st.session_state.get("scope_items", []) + [""]
 
 # --- Portfolio Dashboard ---
 elif menu == "📋 Portfolio Dashboard":
