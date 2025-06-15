@@ -1,142 +1,155 @@
-# Stratigo v2.4 — Full App File
+# app.py – Stratigo v1.0.4
+
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
-import json
 
-# --- PAGE CONFIG ---
+# -------------------
+# CONFIGURATION
+# -------------------
 st.set_page_config(page_title="Stratigo", layout="wide")
+st.markdown("<h1 style='text-align: center;'>📊 Stratigo</h1>", unsafe_allow_html=True)
 
-# --- NAVIGATION MENU ---
-st.sidebar.title("📘 Stratigo Menu")
-page = st.sidebar.radio("Navigate", ["🏠 Home", "➕ Add Project", "📋 Portfolio", "📊 Reports", "🛠️ Admin"])
-
-# --- AUTHENTICATION ---
+# -------------------
+# AUTH
+# -------------------
+PASSWORD = "Stratigo2025"
 if "authenticated" not in st.session_state:
-    password = st.text_input("Enter password to access Stratigo:", type="password")
-    if password == "Stratigo2025":
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    pw = st.text_input("Enter password", type="password")
+    if pw == PASSWORD:
         st.session_state.authenticated = True
-        st.rerun()
+        st.experimental_rerun()
     else:
         st.stop()
-elif not st.session_state.authenticated:
-    st.stop()
 
-# --- GOOGLE SHEETS SETUP ---
+# -------------------
+# GOOGLE SHEETS SETUP
+# -------------------
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1-3nm4rATb0nOm4P3cjgtEVRhJATkJBsjQJRdsx4rnKs").sheet1
+SHEET_ID = st.secrets["GOOGLE_SHEET_ID"]
+sheet = client.open_by_key(SHEET_ID).sheet1
 
-# --- SESSION STATE INIT ---
-for field in ["deliverables_items", "scope_items", "benefits_items"]:
-    if field not in st.session_state:
-        st.session_state[field] = [""]
+# -------------------
+# DATA FUNCTIONS
+# -------------------
+def load_projects():
+    data = sheet.get_all_records()
+    return pd.DataFrame(data)
 
-# --- HOME ---
-if page == "🏠 Home":
-    st.title("🏠 Welcome to Stratigo")
-    st.markdown("Use the menu to get started managing your project portfolio.")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.page_link("🏠 Home", label="🏠 Home", icon="🏠")
-    with col2:
-        st.page_link("➕ Add Project", label="➕ Add", icon="➕")
-    with col3:
-        st.page_link("📊 Reports", label="📊 Reports", icon="📊")
+def save_project(row):
+    sheet.append_row(row)
 
-# --- ADD PROJECT FORM ---
-elif page == "➕ Add Project":
-    st.title("➕ Add Project")
-
+# -------------------
+# FORM FUNCTIONS
+# -------------------
+def render_project_form():
+    st.subheader("➕ Add New Project")
     with st.form("project_form"):
         name = st.text_input("Project Name")
         sponsor = st.text_input("Sponsor")
-        status = st.selectbox("Status", ["Not Started", "In Progress", "On Hold", "Completed"])
         start_date = st.date_input("Start Date")
         end_date = st.date_input("Finish Date")
         timeframe = st.text_input("Timeframe / Phases")
-        budget = st.number_input("Budget", step=1000.0)
-        spend = st.number_input("Spend to Date", step=1000.0)
-        etc = st.number_input("Estimate to Complete", step=1000.0)
+        budget = st.number_input("Total Budget", min_value=0.0, step=100.0)
+        spend = st.number_input("Spend to Date", min_value=0.0, step=100.0)
+        etc = st.number_input("Estimate to Complete", min_value=0.0, step=100.0)
 
-        # Deliverables
         st.markdown("### Deliverables")
-        for i, item in enumerate(st.session_state.deliverables_items):
-            st.session_state.deliverables_items[i] = st.text_input(f"Deliverable {i+1}", value=item, key=f"deliv_{i}")
-        if st.form_submit_button("Add Deliverable"):
-            st.session_state.deliverables_items.append("")
+        deliverables = st.text_area("Enter deliverables separated by commas")
 
-        # Scope
         st.markdown("### Scope")
-        for i, item in enumerate(st.session_state.scope_items):
-            st.session_state.scope_items[i] = st.text_input(f"Scope Item {i+1}", value=item, key=f"scope_{i}")
-        if st.form_submit_button("Add Scope"):
-            st.session_state.scope_items.append("")
+        scope = st.text_area("Enter scope items separated by commas")
 
-        # Benefits
         st.markdown("### Benefits")
-        for i, item in enumerate(st.session_state.benefits_items):
-            st.session_state.benefits_items[i] = st.text_input(f"Benefit {i+1}", value=item, key=f"benefit_{i}")
-        if st.form_submit_button("Add Benefit"):
-            st.session_state.benefits_items.append("")
+        benefits = st.text_area("Enter benefits separated by commas")
 
-        if st.form_submit_button("✅ Submit Project"):
-            data = [name, sponsor, status, str(start_date), str(end_date), timeframe, budget, spend, etc,
-                    "; ".join(st.session_state.deliverables_items),
-                    "; ".join(st.session_state.scope_items),
-                    "; ".join(st.session_state.benefits_items)]
-            sheet.append_row(data)
-            st.success("Project submitted successfully.")
-            st.session_state.deliverables_items = [""]
-            st.session_state.scope_items = [""]
-            st.session_state.benefits_items = [""]
+        submitted = st.form_submit_button("Save Project")
+        if submitted:
+            row = [
+                name, sponsor, str(start_date), str(end_date), timeframe,
+                budget, spend, etc, deliverables, scope, benefits
+            ]
+            save_project(row)
+            st.success("Project saved!")
 
-# --- PORTFOLIO VIEW ---
-elif page == "📋 Portfolio":
-    st.title("📋 Project Portfolio")
-    df = pd.DataFrame(sheet.get_all_records())
+# -------------------
+# DASHBOARD
+# -------------------
+def render_dashboard():
+    st.subheader("📋 Project Portfolio")
+    df = load_projects()
+    if df.empty:
+        st.warning("No project data available.")
+        return
 
-    status_filter = st.multiselect("Filter by Status", options=df["Status"].unique(), default=df["Status"].unique())
-    df_filtered = df[df["Status"].isin(status_filter)]
+    for i, row in df.iterrows():
+        with st.expander(f"📌 {row['Project Name']}"):
+            st.write(f"**Sponsor:** {row['Sponsor']}")
+            st.write(f"**Timeframe:** {row['Timeframe / Phases']}")
+            st.write(f"**Budget:** ${row['Total Budget']}, **Spend:** ${row['Spend to Date']}, **ETC:** ${row['Estimate to Complete']}")
+            st.write("**Deliverables:**", row["Deliverables"])
+            st.write("**Scope:**", row["Scope"])
+            st.write("**Benefits:**", row["Benefits"])
 
-    st.dataframe(df_filtered, use_container_width=True)
+# -------------------
+# REPORTS
+# -------------------
+def render_reports():
+    st.subheader("📊 Reports")
+    df = load_projects()
+    report_type = st.selectbox("Choose report:", ["Benefits Overview", "Budget Summary", "Timeline View"])
 
-    csv = df_filtered.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Download CSV", data=csv, file_name="portfolio.csv", mime="text/csv")
+    if report_type == "Benefits Overview":
+        st.markdown("### Projects & Their Benefits")
+        if "Benefits" in df.columns:
+            for _, row in df.iterrows():
+                st.markdown(f"- **{row['Project Name']}**: {row['Benefits']}")
+        else:
+            st.warning("Missing 'Benefits' column in data.")
 
-# --- REPORTS ---
-elif page == "📊 Reports":
-    st.title("📊 Reports Dashboard")
-    df = pd.DataFrame(sheet.get_all_records())
+    elif report_type == "Budget Summary":
+        st.markdown("### Budget vs Spend")
+        if all(col in df.columns for col in ["Project Name", "Total Budget", "Spend to Date"]):
+            st.dataframe(df[["Project Name", "Total Budget", "Spend to Date", "Estimate to Complete"]])
+        else:
+            st.warning("Budget-related columns are missing.")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        total_budget = df["Budget"].sum()
-        st.metric("Total Budget", f"${total_budget:,.0f}")
-    with col2:
-        spend_to_date = df["Spend to Date"].sum()
-        st.metric("Spend to Date", f"${spend_to_date:,.0f}")
+    elif report_type == "Timeline View":
+        st.markdown("### Project Timeframes")
+        if all(col in df.columns for col in ["Project Name", "Start Date", "Finish Date"]):
+            st.dataframe(df[["Project Name", "Start Date", "Finish Date"]])
+        else:
+            st.warning("Timeline columns are missing.")
 
-    st.markdown("### 🕓 Timeline")
-    df["Start Date"] = pd.to_datetime(df["Start Date"])
-    df["Finish Date"] = pd.to_datetime(df["Finish Date"])
-    fig = px.timeline(df, x_start="Start Date", x_end="Finish Date", y="Project Name", color="Status")
-    fig.update_yaxes(autorange="reversed")
-    st.plotly_chart(fig, use_container_width=True)
+# -------------------
+# HOME
+# -------------------
+def render_home():
+    st.subheader("🏡 Welcome to Stratigo")
+    st.write("Use the menu to get started managing your project portfolio.")
+    st.markdown("### Quick Tips")
+    st.markdown("- Add new projects with budget and scope")
+    st.markdown("- View reports by benefits or budget")
+    st.markdown("- Edit projects in the portfolio section")
 
-# --- ADMIN ---
-elif page == "🛠️ Admin":
-    st.title("🛠️ Admin Panel")
-    df = pd.DataFrame(sheet.get_all_records())
-    st.dataframe(df, use_container_width=True)
+# -------------------
+# MAIN NAVIGATION
+# -------------------
+menu = st.sidebar.radio("Navigate", ["🏡 Home", "➕ Add Project", "📋 Portfolio", "📊 Reports"])
 
-    row_to_delete = st.number_input("Delete Row #", min_value=2, max_value=len(df)+1)
-    if st.button("Delete Row"):
-        sheet.delete_row(row_to_delete)
-        st.success(f"Deleted row {row_to_delete}")
-        st.rerun()
+if menu == "🏡 Home":
+    render_home()
+elif menu == "➕ Add Project":
+    render_project_form()
+elif menu == "📋 Portfolio":
+    render_dashboard()
+elif menu == "📊 Reports":
+    render_reports()
