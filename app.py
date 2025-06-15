@@ -1,158 +1,160 @@
-# Stratigo v1.0 - Stable, Clean, Bug-Resilient
+# Stratigo - Project Portfolio App v1.0.0
+
 import streamlit as st
 import pandas as pd
 import json
+from datetime import date
+import plotly.express as px
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
+# ------------------ CONFIG ------------------
 st.set_page_config(page_title="Stratigo", layout="wide")
-st.markdown("<h1 style='text-align: center;'>📘 Stratigo</h1>", unsafe_allow_html=True)
 
-# ----------------- Google Sheet Setup -----------------
+st.markdown("<h1 style='text-align: center; color: #007bff;'>Stratigo</h1>", unsafe_allow_html=True)
+
+PASSWORD = "Stratigo2025"
+
+# ------------------ SESSION INIT ------------------
+for key in ["deliverables", "scope", "benefits"]:
+    st.session_state.setdefault(key, [""])
+
+# ------------------ AUTH ------------------
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "attempted" not in st.session_state:
+    st.session_state.attempted = False
+
+if not st.session_state.authenticated:
+    with st.form("login_form"):
+        pw = st.text_input("Enter password", type="password")
+        submitted = st.form_submit_button("Login")
+        if submitted:
+            st.session_state.attempted = True
+            if pw == PASSWORD:
+                st.session_state.authenticated = True
+                st.experimental_rerun()
+
+    if st.session_state.attempted and not st.session_state.authenticated:
+        st.error("Incorrect password.")
+    st.stop()
+
+# ------------------ GOOGLE SHEET SETUP ------------------
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
-credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+credentials_dict = st.secrets["GOOGLE_SERVICE_ACCOUNT"]
+credentials = Credentials.from_service_account_info(credentials_dict, scopes=scope)
 client = gspread.authorize(credentials)
-sheet = client.open_by_key(st.secrets["GOOGLE_SHEET_ID"]).sheet1
+SHEET_ID = "1-3nm4rATb0nOm4P3cjgtEVRhJATkJBsjQJRdsx4rnKs"
+sheet = client.open_by_key(SHEET_ID).sheet1
 
-# ----------------- Helper Functions -----------------
-def get_data():
-    data = sheet.get_all_records()
-    return pd.DataFrame(data)
+# ------------------ NAVIGATION ------------------
+menu = st.sidebar.radio("Navigate", ["🏠 Home", "➕ Add Project", "📝 Edit Projects", "📊 Reports"])
 
-def save_data(df):
-    sheet.clear()
-    sheet.update([df.columns.values.tolist()] + df.values.tolist())
+# ------------------ DATA ------------------
+def load_data():
+    data = pd.DataFrame(sheet.get_all_records())
+    if data.empty:
+        return pd.DataFrame(columns=[
+            "Project Name", "Sponsor", "Start Date", "Finish Date", "Timeframe / Phases",
+            "Total Budget", "Spend to Date", "Estimate to Complete", "Deliverables",
+            "Scope", "Benefits"
+        ])
+    return data
 
-def init_example_data():
-    if len(sheet.get_all_values()) <= 1:
-        df = pd.DataFrame([{
-            "Project Name": "Example Project",
-            "Sponsor": "Jane Doe",
-            "Start Date": "2025-06-01",
-            "Finish Date": "2025-12-31",
-            "Timeframe": "Q3-Q4",
-            "Total Budget": 150000,
-            "Spend": 25000,
-            "ETC": 125000,
-            "Deliverables": "MVP, Launch",
-            "Scope": "User onboarding, Core feature set",
-            "Benefits": "Revenue growth, Customer retention"
-        }])
-        save_data(df)
+def save_data(project_dict):
+    data = load_data()
+    data = data.append(project_dict, ignore_index=True)
+    sheet.update([data.columns.values.tolist()] + data.values.tolist())
 
-def show_success(msg):
-    st.success(f"✅ {msg}")
+# ------------------ HOME ------------------
+if menu == "🏠 Home":
+    st.markdown("""
+    ### 👋 Welcome to Stratigo
+    - Use the sidebar to **Add Projects**, **Edit Projects**, or **View Reports**
+    """)
+    st.image("https://images.unsplash.com/photo-1564866657315-3c38f22ab497?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80", use_column_width=True)
 
-# ----------------- Navigation -----------------
-menu = st.sidebar.radio("Navigate", ["🏠 Home", "➕ Add Project", "📋 Projects", "📈 Reports"])
-
-# ----------------- Pages -----------------
-def home_page():
-    st.markdown("### 🏠 Welcome to Stratigo\nUse the menu to get started managing your project portfolio.")
-
-def add_project():
-    st.markdown("### ➕ Add Project")
-
-    with st.form("add_project_form"):
+# ------------------ ADD PROJECT ------------------
+if menu == "➕ Add Project":
+    with st.form("project_form"):
+        st.subheader("📌 Project Information")
         name = st.text_input("Project Name")
         sponsor = st.text_input("Sponsor")
-        start = st.date_input("Start Date")
-        end = st.date_input("Finish Date")
-        timeframe = st.text_input("Timeframe")
-        budget = st.number_input("Total Budget", min_value=0)
-        spend = st.number_input("Spend", min_value=0)
-        etc = budget - spend
+        start = st.date_input("Start Date", date.today())
+        end = st.date_input("Finish Date", date.today())
+        timeframe = st.text_input("Timeframe / Phases")
+        budget = st.number_input("Total Budget", min_value=0.0, step=1000.0)
+        spend = st.number_input("Spend to Date", min_value=0.0, step=1000.0)
+        etc = st.number_input("Estimate to Complete", min_value=0.0, step=1000.0)
 
-        deliverables = st.text_area("Deliverables (comma-separated)")
-        scope = st.text_area("Scope (comma-separated)")
-        benefits = st.text_area("Benefits (comma-separated)")
+        st.markdown("### 📦 Deliverables")
+        for i, val in enumerate(st.session_state.deliverables):
+            st.session_state.deliverables[i] = st.text_input(f"Deliverable {i+1}", val, key=f"del_{i}")
+        if st.button("Add Deliverable"):
+            st.session_state.deliverables.append("")
+        if len(st.session_state.deliverables) > 1 and st.button("Remove Last Deliverable"):
+            st.session_state.deliverables.pop()
 
-        submitted = st.form_submit_button("Submit")
+        st.markdown("### 📋 Scope")
+        for i, val in enumerate(st.session_state.scope):
+            st.session_state.scope[i] = st.text_input(f"Scope {i+1}", val, key=f"sc_{i}")
+        if st.button("Add Scope"):
+            st.session_state.scope.append("")
+        if len(st.session_state.scope) > 1 and st.button("Remove Last Scope"):
+            st.session_state.scope.pop()
 
+        st.markdown("### 🎯 Benefits")
+        for i, val in enumerate(st.session_state.benefits):
+            st.session_state.benefits[i] = st.text_input(f"Benefit {i+1}", val, key=f"ben_{i}")
+        if st.button("Add Benefit"):
+            st.session_state.benefits.append("")
+        if len(st.session_state.benefits) > 1 and st.button("Remove Last Benefit"):
+            st.session_state.benefits.pop()
+
+        submitted = st.form_submit_button("Submit Project")
         if submitted:
-            df = get_data()
-            new_row = {
+            row = {
                 "Project Name": name,
                 "Sponsor": sponsor,
                 "Start Date": str(start),
                 "Finish Date": str(end),
-                "Timeframe": timeframe,
+                "Timeframe / Phases": timeframe,
                 "Total Budget": budget,
-                "Spend": spend,
-                "ETC": etc,
-                "Deliverables": deliverables,
-                "Scope": scope,
-                "Benefits": benefits
+                "Spend to Date": spend,
+                "Estimate to Complete": etc,
+                "Deliverables": "; ".join(st.session_state.deliverables),
+                "Scope": "; ".join(st.session_state.scope),
+                "Benefits": "; ".join(st.session_state.benefits)
             }
-            df = df.append(new_row, ignore_index=True)
-            save_data(df)
-            show_success("Project added successfully.")
+            save_data(row)
+            st.success("Project added successfully!")
+            for key in ["deliverables", "scope", "benefits"]:
+                st.session_state[key] = [""]
 
-def view_projects():
-    st.markdown("### 📋 All Projects")
-    df = get_data()
+# ------------------ EDIT PROJECTS ------------------
+if menu == "📝 Edit Projects":
+    df = load_data()
     if df.empty:
-        st.warning("No projects available.")
-        return
+        st.warning("No projects found.")
+    else:
+        selected = st.selectbox("Select a project to edit", df["Project Name"].unique())
+        project = df[df["Project Name"] == selected].iloc[0]
+        st.write(project)  # Placeholder — can implement actual update later
 
-    selected = st.selectbox("Select a project to edit", df["Project Name"])
-    st.dataframe(df)
+# ------------------ REPORTS ------------------
+if menu == "📊 Reports":
+    df = load_data()
+    if df.empty:
+        st.warning("No data to report on.")
+    else:
+        st.subheader("💰 Budget vs Spend")
+        fig = px.bar(df, x="Project Name", y=["Total Budget", "Spend to Date", "Estimate to Complete"], barmode="group")
+        st.plotly_chart(fig)
 
-    if selected:
-        row = df[df["Project Name"] == selected].iloc[0]
-        with st.form("edit_form"):
-            name = st.text_input("Project Name", row["Project Name"])
-            sponsor = st.text_input("Sponsor", row["Sponsor"])
-            start = st.date_input("Start Date", pd.to_datetime(row["Start Date"]))
-            end = st.date_input("Finish Date", pd.to_datetime(row["Finish Date"]))
-            timeframe = st.text_input("Timeframe", row["Timeframe"])
-            budget = st.number_input("Total Budget", value=row.get("Total Budget", 0))
-            spend = st.number_input("Spend", value=row.get("Spend", 0))
-            etc = budget - spend
-            deliverables = st.text_area("Deliverables", row["Deliverables"])
-            scope = st.text_area("Scope", row["Scope"])
-            benefits = st.text_area("Benefits", row["Benefits"])
-
-            submit_edit = st.form_submit_button("Update Project")
-            if submit_edit:
-                idx = df[df["Project Name"] == selected].index[0]
-                df.loc[idx] = [
-                    name, sponsor, str(start), str(end), timeframe,
-                    budget, spend, etc, deliverables, scope, benefits
-                ]
-                save_data(df)
-                show_success("Project updated.")
-
-def reports_page():
-    st.markdown("### 📈 Reports")
-
-    df = get_data()
-    report = st.selectbox("Choose report", ["Benefits Overview", "Budget Summary"])
-
-    if report == "Benefits Overview":
-        if "Benefits" not in df.columns:
-            st.error("Missing 'Benefits' column.")
+        st.subheader("📅 Timeline Overview")
+        if "Start Date" in df.columns and "Finish Date" in df.columns:
+            df["Start Date"] = pd.to_datetime(df["Start Date"])
+            df["Finish Date"] = pd.to_datetime(df["Finish Date"])
+            st.write(df[["Project Name", "Start Date", "Finish Date"]])
         else:
-            st.write("### 📊 Benefits by Project")
-            for i, row in df.iterrows():
-                st.markdown(f"- **{row['Project Name']}**: {row['Benefits']}")
-
-    elif report == "Budget Summary":
-        if not {"Project Name", "Total Budget", "Spend", "ETC"}.issubset(df.columns):
-            st.error("Missing required columns for budget summary.")
-        else:
-            chart_data = df.set_index("Project Name")[["Total Budget", "Spend", "ETC"]]
-            st.bar_chart(chart_data)
-
-# ----------------- Run Pages -----------------
-init_example_data()
-
-if menu == "🏠 Home":
-    home_page()
-elif menu == "➕ Add Project":
-    add_project()
-elif menu == "📋 Projects":
-    view_projects()
-elif menu == "📈 Reports":
-    reports_page()
+            st.info("Timeline data incomplete.")
