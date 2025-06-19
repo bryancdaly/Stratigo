@@ -1,72 +1,51 @@
-# Stratigo App - v1.0.0
+# Stratigo v1.0 — Clean base app with login, navigation, and placeholder pages
 
 import streamlit as st
 
-# --- App Config ---
+# --- App Title ---
 st.set_page_config(page_title="Stratigo", layout="wide")
 
-# --- Constants ---
-APP_PASSWORD = "Stratigo2025"
-APP_VERSION = "v1.0.0"
-PAGES = ["🏠 Home", "📁 Projects", "📊 Reports", "ℹ️ About"]
+# --- Password Protection ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-# --- Auth Handling ---
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+def login():
+    st.title("🔐 Welcome to Stratigo")
+    password = st.text_input("Enter password to continue:", type="password")
+    if st.button("Login"):
+        if password == "Stratigo2025":
+            st.session_state.logged_in = True
+            st.success("Login successful. Use the sidebar to navigate.")
+        else:
+            st.error("Incorrect password. Try again.")
 
-def login_page():
-    st.title("🔐 Stratigo Login")
-    with st.form("login_form"):
-        password = st.text_input("Password", type="password")
-        login_btn = st.form_submit_button("Login")
-        if login_btn:
-            if password == APP_PASSWORD:
-                st.session_state.authenticated = True
-                st.success("Login successful. Redirecting...")
-                st.experimental_rerun()
-            else:
-                st.error("Incorrect password")
+# --- Navigation Menu ---
+def sidebar_menu():
+    with st.sidebar:
+        st.title("📊 Stratigo Menu")
+        return st.radio("Go to:", ["🏠 Home", "📁 Projects", "📈 Reports"])
 
-# --- Navigation ---
-def sidebar_navigation():
-    st.sidebar.title("📘 Navigation")
-    return st.sidebar.radio("Navigate to:", PAGES)
+# --- Placeholder Pages ---
+def show_home():
+    st.title("🏠 Welcome to Stratigo")
+    st.markdown("Use the sidebar to navigate to different features. This is your project portfolio management hub.")
 
-# --- Pages ---
-def home_page():
-    st.title("🏠 Home")
-    st.write("Welcome to **Stratigo**, your project portfolio hub.")
-
-def projects_page():
+def show_projects():
     st.title("📁 Projects")
-    st.write("Here you'll manage and review your projects. [Placeholder]")
+    st.markdown("This is the Projects section. Functionality for adding, editing, and viewing projects will appear here.")
 
-def reports_page():
-    st.title("📊 Reports")
-    st.write("Insightful reports will be shown here. [Placeholder]")
-
-def about_page():
-    st.title("ℹ️ About Stratigo")
-    st.markdown(f"""
-    **Version:** {APP_VERSION}  
-    Stratigo is a simple Streamlit app for managing project portfolios.
-    """)
+def show_reports():
+    st.title("📈 Reports")
+    st.markdown("Reports and insights will appear here. You can later add charts and metrics.")
 
 # --- Main App Logic ---
-def main():
-    if not st.session_state.authenticated:
-        login_page()
-    else:
-        page = sidebar_navigation()
-        if page == "🏠 Home":
-            home_page()
-        elif page == "📁 Projects":
-            projects_page()
-        elif page == "📊 Reports":
-            reports_page()
-        elif page == "ℹ️ About":
-            about_page()
-
-# --- Run App ---
-if __name__ == "__main__":
-    main()
+if st.session_state.logged_in:
+    page = sidebar_menu()
+    if page == "🏠 Home":
+        show_home()
+    elif page == "📁 Projects":
+        show_projects()
+    elif page == "📈 Reports":
+        show_reports()
+else:
+    login()
