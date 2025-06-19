@@ -1,5 +1,4 @@
-# Stratigo v1.1.4 – Stable Login & Sheets Auth
-
+# Stratigo v1.1.5 – Secure Sheet ID + Clean Auth
 import streamlit as st
 import pandas as pd
 from google.oauth2.service_account import Credentials
@@ -27,13 +26,14 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ───────────────────────────
-# Google Sheets
+# Google Sheets Setup
 try:
-    creds = st.secrets["GOOGLE_SERVICE_ACCOUNT"]  # FIXED: No json.loads
+    creds = st.secrets["GOOGLE_SERVICE_ACCOUNT"]
+    sheet_id = st.secrets["GOOGLE_SHEET_ID"]  # Now pulled from secrets
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     credentials = Credentials.from_service_account_info(creds, scopes=scope)
     gc = gspread.authorize(credentials)
-    sheet = gc.open_by_key("1-3nm4rATb0nOm4P3cjgtEVRhJATkJBsjQJRdsx4rnKs").sheet1
+    sheet = gc.open_by_key(sheet_id).sheet1
 except Exception as e:
     st.error(f"Google Sheets error: {e}")
     st.stop()
