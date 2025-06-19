@@ -1,5 +1,4 @@
-# Stratigo v1.1.1 – Fixed Form + Reports
-
+# Stratigo v1.1.2 – No rerun, stable auth, debugged
 import streamlit as st
 import pandas as pd
 import json
@@ -8,29 +7,30 @@ import gspread
 import plotly.express as px
 
 # ───────────────────────────
-# Config
 st.set_page_config("Stratigo", layout="wide")
 st.title("📘 Stratigo")
 
 # ───────────────────────────
-# Auth
+# Auth - No experimental rerun
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+
 if not st.session_state.authenticated:
     st.subheader("🔐 Login Required")
-    password = st.text_input("Enter password:", type="password")
-    if password == "Stratigo2025":
+    pw = st.text_input("Enter password:", type="password")
+    if pw == "Stratigo2025":
         st.session_state.authenticated = True
-        st.experimental_rerun()
+        st.success("✅ Logged in")
+        st.stop()
     else:
         st.stop()
 
 # ───────────────────────────
 # Google Sheets
 try:
-    credentials_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+    creds = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    credentials = Credentials.from_service_account_info(credentials_dict, scopes=scope)
+    credentials = Credentials.from_service_account_info(creds, scopes=scope)
     gc = gspread.authorize(credentials)
     sheet = gc.open_by_key("1-3nm4rATb0nOm4P3cjgtEVRhJATkJBsjQJRdsx4rnKs").sheet1
 except Exception as e:
@@ -41,8 +41,7 @@ except Exception as e:
 # Helpers
 def get_all_projects():
     try:
-        df = pd.DataFrame(sheet.get_all_records())
-        return df
+        return pd.DataFrame(sheet.get_all_records())
     except:
         return pd.DataFrame()
 
@@ -59,74 +58,65 @@ if menu == "🏠 Home":
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("➕ Add Project"):
-            st.session_state.menu = "➕ Add Project"
+            st.experimental_set_query_params(page="add")
     with col2:
         if st.button("📋 View Projects"):
-            st.session_state.menu = "📋 Projects"
+            st.experimental_set_query_params(page="projects")
     with col3:
         if st.button("📈 View Reports"):
-            st.session_state.menu = "📈 Reports"
+            st.experimental_set_query_params(page="reports")
 
 elif menu == "➕ Add Project":
     st.header("Add New Project")
     with st.form("project_form"):
         name = st.text_input("Project Name")
         sponsor = st.text_input("Sponsor")
-        start_date = st.date_input("Start Date")
-        end_date = st.date_input("Finish Date")
-        timeframe = st.text_input("Timeframe / Phases")
+        start = st.date_input("Start Date")
+        end = st.date_input("Finish Date")
+        phase = st.text_input("Timeframe / Phases")
         budget = st.number_input("Budget", min_value=0.0)
         spend = st.number_input("Spend to Date", min_value=0.0)
         etc = st.number_input("Estimate to Complete", min_value=0.0)
+        deliverables = st.text_area("Deliverables (one per line)")
+        scope = st.text_area("Scope items (one per line)")
+        benefits = st.text_area("Benefits (one per line)")
+        submit = st.form_submit_button("✅ Submit Project")
 
-        deliverables = st.text_area("Deliverables (one per line)", "")
-        scope = st.text_area("Scope (one per line)", "")
-        benefits = st.text_area("Benefits (one per line)", "")
-
-        submitted = st.form_submit_button("✅ Submit Project")
-
-    if submitted:
-        data = {
+    if submit:
+        row = {
             "Project Name": name,
             "Sponsor": sponsor,
-            "Start Date": str(start_date),
-            "Finish Date": str(end_date),
-            "Timeframe / Phases": timeframe,
+            "Start Date": str(start),
+            "Finish Date": str(end),
+            "Timeframe / Phases": phase,
             "Budget": budget,
             "Spend to Date": spend,
             "Estimate to Complete": etc,
-            "Deliverables": "; ".join(deliverables.strip().splitlines()),
-            "Scope": "; ".join(scope.strip().splitlines()),
-            "Benefits": "; ".join(benefits.strip().splitlines())
+            "Deliverables": "; ".join(deliverables.splitlines()),
+            "Scope": "; ".join(scope.splitlines()),
+            "Benefits": "; ".join(benefits.splitlines())
         }
-        save_project(data)
+        save_project(row)
         st.success("✅ Project saved!")
 
 elif menu == "📋 Projects":
     st.header("📋 Projects Overview")
     df = get_all_projects()
-    if not df.empty:
-        st.dataframe(df)
-    else:
-        st.info("No projects yet.")
+    st.dataframe(df) if not df.empty else st.info("No projects available.")
 
 elif menu == "📈 Reports":
     st.header("📈 Portfolio Insights")
     df = get_all_projects()
-
     if df.empty:
         st.warning("No data available.")
     else:
-        if all(c in df.columns for c in ["Project Name", "Budget", "Spend to Date", "Estimate to Complete"]):
-            st.subheader("🔵 Budget vs Spend")
+        if all(col in df.columns for col in ["Project Name", "Budget", "Spend to Date", "Estimate to Complete"]):
             fig = px.bar(df, x="Project Name", y=["Budget", "Spend to Date", "Estimate to Complete"], barmode="group")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.error("Missing one or more of: 'Project Name', 'Budget', 'Spend to Date', 'Estimate to Complete'.")
+            st.error("Missing columns for budget report.")
 
-        if "Benefits" in df.columns:
+        if "Benefits" in df.columns and "Project Name" in df.columns:
             st.subheader("🔶 Benefits Overview")
             for i, row in df.iterrows():
                 st.markdown(f"**{row['Project Name']}**: {row['Benefits']}")
-        else:
-            st.info("No 'Benefits' column in data.")
