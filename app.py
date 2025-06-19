@@ -1,64 +1,86 @@
-# Stratigo - Project Portfolio App
-# Version: 1.0
+# app.py - Stratigo v1.0
 
-import pandas as pd
-import random
-from faker import Faker
-from datetime import timedelta
 import streamlit as st
+import pandas as pd
+import numpy as np
+import random
+import datetime
+import matplotlib.pyplot as plt
 
-# Initialise Faker
-fake = Faker()
+# ----- Setup -----
+st.set_page_config(page_title="Stratigo", layout="wide")
+st.title("📊 Stratigo: Project Portfolio Manager")
 
-# Generate 25 sample project records
-def generate_projects(n=25):
-    statuses = ["On Track", "At Risk", "Delayed", "Completed"]
+# ----- Example Data -----
+@st.cache_data
+def load_data():
+    statuses = ["On Track", "At Risk", "Delayed", "Complete"]
     phases = ["Initiation", "Planning", "Execution", "Closure"]
+    categories = ["IT", "Business", "Operations", "Marketing"]
+    pm_names = ["Alice", "Bob", "Charlie", "Diana", "Ethan"]
+    
     data = []
-
-    for _ in range(n):
-        start = fake.date_between(start_date='-1y', end_date='today')
-        end = start + timedelta(days=random.randint(90, 360))
-        budget = round(random.uniform(100000, 1000000), 2)
-        spend = round(budget * random.uniform(0.3, 0.95), 2)
-        benefit = round(random.uniform(50000, 2000000), 2)
+    for i in range(25):
+        start = datetime.date(2024, random.randint(1, 12), random.randint(1, 28))
+        end = start + datetime.timedelta(days=random.randint(90, 365))
+        budget = random.randint(100000, 500000)
+        actual = budget * random.uniform(0.7, 1.2)
+        craid_count = random.randint(1, 10)
         data.append({
-            "Project Name": fake.bs().title(),
+            "Project Name": f"Project {chr(65+i)}",
+            "Project Manager": random.choice(pm_names),
             "Status": random.choice(statuses),
             "Phase": random.choice(phases),
+            "Category": random.choice(categories),
             "Start Date": start,
             "End Date": end,
-            "Budget (NZD)": budget,
-            "Spend to Date (NZD)": spend,
-            "Forecast Benefit (NZD)": benefit
+            "Budget ($)": round(budget, 2),
+            "Actual Spend ($)": round(actual, 2),
+            "CRAID Count": craid_count
         })
     return pd.DataFrame(data)
 
-# Create dataset in memory
-project_df = generate_projects()
+df = load_data()
 
-# App config
-st.set_page_config("Stratigo", layout="wide")
-st.title("📘 Stratigo – Project Portfolio Manager")
+# ----- Navigation -----
+menu = st.sidebar.radio("Navigation", [
+    "🏠 Overview Dashboard",
+    "📈 Financials",
+    "⚠️ CRAID Register",
+    "📋 Project Table"
+])
 
-# Navigation Tabs
-tabs = st.tabs(["🏠 Dashboard", "📁 Projects", "💰 Financials", "🧩 CRAID Register"])
+# ----- Pages -----
+if menu == "🏠 Overview Dashboard":
+    st.subheader("Portfolio Summary")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("📁 Total Projects", len(df))
+    col2.metric("💰 Total Budget", f"${df['Budget ($)'].sum():,.0f}")
+    col3.metric("⚠️ CRAID Items", df['CRAID Count'].sum())
 
-with tabs[0]:
-    st.header("Dashboard")
-    st.metric("Total Budget", f"${project_df['Budget (NZD)'].sum():,.0f}")
-    st.metric("Total Spend", f"${project_df['Spend to Date (NZD)'].sum():,.0f}")
-    st.metric("Forecast Benefit", f"${project_df['Forecast Benefit (NZD)'].sum():,.0f}")
-    st.bar_chart(project_df.groupby("Status")["Budget (NZD)"].sum())
+    st.markdown("### 📊 Status Breakdown")
+    status_counts = df["Status"].value_counts()
+    fig, ax = plt.subplots()
+    ax.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')
+    st.pyplot(fig)
 
-with tabs[1]:
-    st.header("Projects")
-    st.dataframe(project_df)
+elif menu == "📈 Financials":
+    st.subheader("Budget vs Actual Spend")
+    df["Variance ($)"] = df["Budget ($)"] - df["Actual Spend ($)"]
+    st.dataframe(df[["Project Name", "Budget ($)", "Actual Spend ($)", "Variance ($)"]])
+    
+    st.markdown("### 📊 Budget vs Actual Chart")
+    st.bar_chart(df.set_index("Project Name")[["Budget ($)", "Actual Spend ($)"]])
 
-with tabs[2]:
-    st.header("Financial Overview")
-    st.dataframe(project_df[["Project Name", "Budget (NZD)", "Spend to Date (NZD)", "Forecast Benefit (NZD)"]])
+elif menu == "⚠️ CRAID Register":
+    st.subheader("CRAID Register (Summary)")
+    st.dataframe(df[["Project Name", "Project Manager", "Status", "CRAID Count"]])
+    
+    st.markdown("### CRAID Heatmap")
+    heatmap = df.pivot_table(index="Project Manager", values="CRAID Count", aggfunc="sum")
+    st.bar_chart(heatmap)
 
-with tabs[3]:
-    st.header("CRAID Register")
-    st.info("This section will include entries for Constraints, Risks, Assumptions, Issues, and Dependencies in future releases.")
+elif menu == "📋 Project Table":
+    st.subheader("All Projects")
+    st.dataframe(df)
