@@ -1,92 +1,64 @@
-# app.py
-# Stratigo Version 1.0
+# Stratigo - Project Portfolio App
+# Version: 1.0
 
-import streamlit as st
 import pandas as pd
 import random
-import numpy as np
 from faker import Faker
-import matplotlib.pyplot as plt
-import seaborn as sns
+from datetime import timedelta
+import streamlit as st
 
-# Setup
+# Initialise Faker
 fake = Faker()
-st.set_page_config(page_title="Stratigo", layout="wide")
-sns.set(style="whitegrid")
 
-# --- Sample Data Generation ---
-@st.cache_data
-def generate_project_data(n=50):
-    phases = ['Initiation', 'Planning', 'Execution', 'Monitoring', 'Closure']
-    statuses = ['On Track', 'At Risk', 'Delayed', 'Completed']
-    return pd.DataFrame([{
-        'Project ID': f"PJT-{i+1:03d}",
-        'Project Name': fake.bs().title(),
-        'Status': random.choice(statuses),
-        'Phase': random.choice(phases),
-        'Planned Budget ($k)': round(random.uniform(100, 1500), 2),
-        'Actual Cost ($k)': round(random.uniform(50, 1600), 2),
-        'Project Owner': fake.name(),
-        'Expected Benefits ($k)': round(random.uniform(100, 3000), 2),
-    } for i in range(n)])
+# Generate 25 sample project records
+def generate_projects(n=25):
+    statuses = ["On Track", "At Risk", "Delayed", "Completed"]
+    phases = ["Initiation", "Planning", "Execution", "Closure"]
+    data = []
 
-@st.cache_data
-def generate_craid_data(project_ids, n=200):
-    types = ['Constraint', 'Risk', 'Assumption', 'Issue', 'Dependency']
-    severities = ['Low', 'Medium', 'High', 'Critical']
-    return pd.DataFrame([{
-        'CRAID ID': fake.uuid4(),
-        'Project ID': random.choice(project_ids),
-        'Type': random.choice(types),
-        'Description': fake.sentence(nb_words=10),
-        'Severity': random.choice(severities),
-        'Owner': fake.name()
-    } for _ in range(n)])
+    for _ in range(n):
+        start = fake.date_between(start_date='-1y', end_date='today')
+        end = start + timedelta(days=random.randint(90, 360))
+        budget = round(random.uniform(100000, 1000000), 2)
+        spend = round(budget * random.uniform(0.3, 0.95), 2)
+        benefit = round(random.uniform(50000, 2000000), 2)
+        data.append({
+            "Project Name": fake.bs().title(),
+            "Status": random.choice(statuses),
+            "Phase": random.choice(phases),
+            "Start Date": start,
+            "End Date": end,
+            "Budget (NZD)": budget,
+            "Spend to Date (NZD)": spend,
+            "Forecast Benefit (NZD)": benefit
+        })
+    return pd.DataFrame(data)
 
-projects = generate_project_data()
-craids = generate_craid_data(projects['Project ID'].tolist())
+# Create dataset in memory
+project_df = generate_projects()
 
-# --- Pages ---
-def dashboard():
-    st.title("📊 Project Portfolio Dashboard")
-    st.dataframe(projects)
+# App config
+st.set_page_config("Stratigo", layout="wide")
+st.title("📘 Stratigo – Project Portfolio Manager")
 
-    st.subheader("📈 Financial Scatterplot")
-    fig, ax = plt.subplots()
-    sns.scatterplot(data=projects, x='Planned Budget ($k)', y='Actual Cost ($k)', hue='Status', ax=ax)
-    st.pyplot(fig)
+# Navigation Tabs
+tabs = st.tabs(["🏠 Dashboard", "📁 Projects", "💰 Financials", "🧩 CRAID Register"])
 
-    st.subheader("🧩 Projects by Phase")
-    st.bar_chart(projects['Phase'].value_counts())
+with tabs[0]:
+    st.header("Dashboard")
+    st.metric("Total Budget", f"${project_df['Budget (NZD)'].sum():,.0f}")
+    st.metric("Total Spend", f"${project_df['Spend to Date (NZD)'].sum():,.0f}")
+    st.metric("Forecast Benefit", f"${project_df['Forecast Benefit (NZD)'].sum():,.0f}")
+    st.bar_chart(project_df.groupby("Status")["Budget (NZD)"].sum())
 
-def craid_register():
-    st.title("🧾 CRAID Register")
-    st.dataframe(craids)
+with tabs[1]:
+    st.header("Projects")
+    st.dataframe(project_df)
 
-    st.subheader("🔍 CRAID by Type and Severity")
-    summary = craids.groupby(['Type', 'Severity']).size().unstack(fill_value=0)
-    st.dataframe(summary)
+with tabs[2]:
+    st.header("Financial Overview")
+    st.dataframe(project_df[["Project Name", "Budget (NZD)", "Spend to Date (NZD)", "Forecast Benefit (NZD)"]])
 
-    st.subheader("📊 CRAID Distribution")
-    st.bar_chart(craids['Type'].value_counts())
-
-def financials():
-    st.title("💰 Financial Overview")
-    df = projects.copy()
-    df['Variance ($k)'] = df['Planned Budget ($k)'] - df['Actual Cost ($k)']
-    st.dataframe(df[['Project ID', 'Project Name', 'Planned Budget ($k)', 'Actual Cost ($k)', 'Variance ($k)', 'Expected Benefits ($k)']])
-
-    st.subheader("📉 Budget Variance Histogram")
-    fig, ax = plt.subplots()
-    sns.histplot(df['Variance ($k)'], bins=20, kde=True, ax=ax)
-    st.pyplot(fig)
-
-# --- Navigation ---
-tab = st.sidebar.radio("🔍 Navigate", ["🏠 Dashboard", "📌 CRAID Register", "💼 Financials"])
-
-if tab == "🏠 Dashboard":
-    dashboard()
-elif tab == "📌 CRAID Register":
-    craid_register()
-elif tab == "💼 Financials":
-    financials()
+with tabs[3]:
+    st.header("CRAID Register")
+    st.info("This section will include entries for Constraints, Risks, Assumptions, Issues, and Dependencies in future releases.")
