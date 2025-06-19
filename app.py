@@ -1,123 +1,81 @@
-# Stratigo v1.1.5 – Secure Sheet ID + Clean Auth
+# app.py - Stratigo v2.0.0
 import streamlit as st
-import pandas as pd
-from google.oauth2.service_account import Credentials
 import gspread
-import plotly.express as px
+import json
+from google.oauth2.service_account import Credentials
+import pandas as pd
 
-# ───────────────────────────
-st.set_page_config("Stratigo", layout="wide")
-st.title("📘 Stratigo")
+# --- Auth setup ---
+st.set_page_config(page_title="Stratigo", layout="wide")
 
-# ───────────────────────────
-# Auth
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+# Password gate
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-if not st.session_state.authenticated:
-    st.subheader("🔐 Login Required")
-    pw = st.text_input("Enter password:", type="password")
-    if pw == "Stratigo2025":
-        st.session_state.authenticated = True
+if not st.session_state.logged_in:
+    st.title("📘 Stratigo")
+    st.header("🔐 Login Required")
+    password = st.text_input("Enter password:", type="password")
+    if password == "Stratigo2025":
         st.success("✅ Logged in")
+        st.session_state.logged_in = True
+        st.experimental_rerun()
+    else:
+        st.stop()
 
-if not st.session_state.authenticated:
-    st.info("Please enter the correct password to continue.")
-    st.stop()
-
-# ───────────────────────────
-# Google Sheets Setup
+# --- Google Sheets auth ---
 try:
-    creds = st.secrets["GOOGLE_SERVICE_ACCOUNT"]
-    sheet_id = st.secrets["GOOGLE_SHEET_ID"]  # Now pulled from secrets
-    scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    credentials = Credentials.from_service_account_info(creds, scopes=scope)
+    credentials_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+    scope = ["https://www.googleapis.com/auth/spreadsheets"]
+    credentials = Credentials.from_service_account_info(credentials_dict, scopes=scope)
     gc = gspread.authorize(credentials)
+    sheet_id = st.secrets["GOOGLE_SHEET_ID"]
     sheet = gc.open_by_key(sheet_id).sheet1
+    data = sheet.get_all_records()
+    df = pd.DataFrame(data)
 except Exception as e:
     st.error(f"Google Sheets error: {e}")
     st.stop()
 
-# ───────────────────────────
-# Helpers
-def get_all_projects():
-    try:
-        return pd.DataFrame(sheet.get_all_records())
-    except:
-        return pd.DataFrame()
+# --- Navigation ---
+page = st.sidebar.radio("📚 Navigate", ["🏠 Home", "➕ Add Project", "📊 Reports"])
 
-def save_project(data):
-    sheet.append_row(list(data.values()))
+# --- Pages ---
+if page == "🏠 Home":
+    st.title("🏠 Welcome to Stratigo")
+    st.write("Use the menu to get started managing your project portfolio.")
+    st.dataframe(df)
 
-# ───────────────────────────
-# Navigation
-menu = st.radio("Menu", ["🏠 Home", "➕ Add Project", "📋 Projects", "📈 Reports"])
-
-# ───────────────────────────
-if menu == "🏠 Home":
-    st.header("🏠 Welcome to Stratigo")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("➕ Add Project"):
-            st.session_state.menu = "➕ Add Project"
-    with col2:
-        if st.button("📋 View Projects"):
-            st.session_state.menu = "📋 Projects"
-    with col3:
-        if st.button("📈 View Reports"):
-            st.session_state.menu = "📈 Reports"
-
-elif menu == "➕ Add Project":
-    st.header("Add New Project")
+elif page == "➕ Add Project":
+    st.title("➕ Add New Project")
     with st.form("project_form"):
-        name = st.text_input("Project Name")
+        project = st.text_input("Project Name")
         sponsor = st.text_input("Sponsor")
         start = st.date_input("Start Date")
-        end = st.date_input("Finish Date")
-        phase = st.text_input("Timeframe / Phases")
-        budget = st.number_input("Budget", min_value=0.0)
-        spend = st.number_input("Spend to Date", min_value=0.0)
-        etc = st.number_input("Estimate to Complete", min_value=0.0)
-        deliverables = st.text_area("Deliverables (one per line)")
-        scope = st.text_area("Scope items (one per line)")
-        benefits = st.text_area("Benefits (one per line)")
-        submit = st.form_submit_button("✅ Submit Project")
+        finish = st.date_input("Finish Date")
+        timeframe = st.text_input("Timeframe")
+        budget = st.number_input("Total Budget", min_value=0.0, step=100.0)
+        spend = st.number_input("Spend to Date", min_value=0.0, step=100.0)
+        etc = st.number_input("Estimate to Complete", min_value=0.0, step=100.0)
+        submit = st.form_submit_button("✅ Save Project")
 
     if submit:
-        row = {
-            "Project Name": name,
-            "Sponsor": sponsor,
-            "Start Date": str(start),
-            "Finish Date": str(end),
-            "Timeframe / Phases": phase,
-            "Budget": budget,
-            "Spend to Date": spend,
-            "Estimate to Complete": etc,
-            "Deliverables": "; ".join(deliverables.splitlines()),
-            "Scope": "; ".join(scope.splitlines()),
-            "Benefits": "; ".join(benefits.splitlines())
-        }
-        save_project(row)
-        st.success("✅ Project saved!")
+        new_row = [project, sponsor, str(start), str(finish), timeframe, budget, spend, etc]
+        sheet.append_row(new_row)
+        st.success("Project added successfully!")
+        st.experimental_rerun()
 
-elif menu == "📋 Projects":
-    st.header("📋 Projects Overview")
-    df = get_all_projects()
-    st.dataframe(df) if not df.empty else st.info("No projects available.")
+elif page == "📊 Reports":
+    st.title("📊 Reports")
+    report = st.selectbox("Choose report", ["Project Overview", "Budget Summary"])
 
-elif menu == "📈 Reports":
-    st.header("📈 Portfolio Insights")
-    df = get_all_projects()
-    if df.empty:
-        st.warning("No data available.")
-    else:
-        if all(col in df.columns for col in ["Project Name", "Budget", "Spend to Date", "Estimate to Complete"]):
-            fig = px.bar(df, x="Project Name", y=["Budget", "Spend to Date", "Estimate to Complete"], barmode="group")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.error("Missing columns for budget report.")
+    if report == "Project Overview":
+        st.subheader("📋 All Projects")
+        st.dataframe(df)
 
-        if "Benefits" in df.columns and "Project Name" in df.columns:
-            st.subheader("🔶 Benefits Overview")
-            for i, row in df.iterrows():
-                st.markdown(f"**{row['Project Name']}**: {row['Benefits']}")
+    elif report == "Budget Summary":
+        try:
+            summary = df[["Project Name", "Total Budget", "Spend to Date", "Estimate to Complete"]]
+            st.dataframe(summary)
+        except Exception as e:
+            st.warning(f"Could not generate summary: {e}")
