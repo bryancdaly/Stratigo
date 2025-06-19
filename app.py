@@ -1,7 +1,7 @@
-# Stratigo v1.1.3 – Seamless Login Flow
+# Stratigo v1.1.4 – Stable Login & Sheets Auth
+
 import streamlit as st
 import pandas as pd
-import json
 from google.oauth2.service_account import Credentials
 import gspread
 import plotly.express as px
@@ -11,7 +11,7 @@ st.set_page_config("Stratigo", layout="wide")
 st.title("📘 Stratigo")
 
 # ───────────────────────────
-# Auth — No st.stop(), clean flow
+# Auth
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -29,7 +29,7 @@ if not st.session_state.authenticated:
 # ───────────────────────────
 # Google Sheets
 try:
-creds = st.secrets["GOOGLE_SERVICE_ACCOUNT"]
+    creds = st.secrets["GOOGLE_SERVICE_ACCOUNT"]  # FIXED: No json.loads
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     credentials = Credentials.from_service_account_info(creds, scopes=scope)
     gc = gspread.authorize(credentials)
