@@ -1,137 +1,143 @@
-# Stratigo Project Portfolio Tracker v2.1
-
+# Version: Stratigo v1.3
 import streamlit as st
 import pandas as pd
 import json
 import plotly.express as px
-import gspread
 from google.oauth2.service_account import Credentials
+import gspread
 
-# -------------- LOGIN ----------------
-def login():
-    st.title("📘 Stratigo")
-    st.header("🔐 Login Required")
-    password = st.text_input("Enter password:", type="password")
-    if password == "Stratigo2025":
-        st.success("✅ Logged in")
-        st.session_state.logged_in = True
-        st.experimental_rerun()
-    elif password:
-        st.error("Incorrect password")
-
-if "logged_in" not in st.session_state or not st.session_state.logged_in:
-    login()
-    st.stop()
-
-# -------------- GOOGLE SHEETS SETUP ----------------
-scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+# --- Google Sheets Setup ---
+scope = ["https://www.googleapis.com/auth/spreadsheets"]
 credentials_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
 credentials = Credentials.from_service_account_info(credentials_dict, scopes=scope)
-client = gspread.authorize(credentials)
+gc = gspread.authorize(credentials)
+spreadsheet = gc.open_by_key(st.secrets["SHEET_ID"])
+sheet = spreadsheet.worksheet("Projects")
 
-SHEET_ID = st.secrets["GOOGLE_SHEET_ID"]
-sheet = client.open_by_key(SHEET_ID).sheet1
+# --- Session State Setup ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "edit_index" not in st.session_state:
+    st.session_state.edit_index = None
+if "page" not in st.session_state:
+    st.session_state.page = "Home"
 
-# -------------- NAVIGATION ----------------
-st.title("📊 Stratigo Project Portfolio")
-page = st.selectbox("📚 Navigate", ["🏠 Home", "➕ Add Project", "📈 Reports"])
+# --- Login Function ---
+def login():
+    st.set_page_config(page_title="Stratigo", layout="wide")
+    st.title("🔐 Stratigo Login")
+    password = st.text_input("Enter password", type="password")
+    if st.button("Login"):
+        if password == "Stratigo2025":
+            st.session_state.logged_in = True
+        else:
+            st.error("Incorrect password.")
 
-# -------------- DATA HELPERS ----------------
-def get_data():
-    data = sheet.get_all_records()
-    return pd.DataFrame(data)
+# --- Navigation ---
+def nav():
+    st.sidebar.title("Stratigo")
+    page = st.sidebar.radio("Navigate", [
+        "Home", "Add Project", "Reports", "Projects List"
+    ])
+    st.session_state.page = page
 
-def save_data(row):
-    sheet.append_row(row)
-
-def update_data(df):
-    sheet.clear()
-    sheet.append_row(df.columns.tolist())
-    for i in df.values.tolist():
-        sheet.append_row(i)
-
-# -------------- FORM COMPONENTS ----------------
-def edit_list(title, items, key_prefix):
-    st.subheader(f"📌 {title}")
-    for i in range(len(items)):
-        items[i] = st.text_input(f"{title} {i+1}", items[i], key=f"{key_prefix}_{i}")
-    if st.button(f"➕ Add {title}", key=f"{key_prefix}_add"):
-        items.append("")
-    if len(items) > 1 and st.button(f"➖ Remove Last {title}", key=f"{key_prefix}_remove"):
-        items.pop()
-    return items
-
-# -------------- PAGES ----------------
+# --- Home Page ---
 def render_home():
-    st.header("🏠 Welcome to Stratigo")
-    st.markdown("Use the menu to get started managing your project portfolio.")
+    st.title("🏠 Welcome to Stratigo")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.button("➕ Add Project", on_click=lambda: set_page("Add Project"))
+        st.button("📊 View Reports", on_click=lambda: set_page("Reports"))
+    with col2:
+        st.button("📁 Projects List", on_click=lambda: set_page("Projects List"))
 
-def render_add_project():
-    st.header("➕ Add Project")
-    with st.form("project_form", clear_on_submit=True):
+# --- Add/Edit Project Form ---
+def render_form(edit_index=None):
+    st.title("📝 Add/Edit Project")
+
+    with st.form("project_form", clear_on_submit=not edit_index):
         name = st.text_input("Project Name")
-        sponsor = st.text_input("Sponsor")
-        start = st.date_input("Start Date")
-        finish = st.date_input("Finish Date")
         timeframe = st.text_input("Timeframe / Phases")
-        budget = st.number_input("Total Budget", step=100.0)
-        spend = st.number_input("Spend to Date", step=100.0)
 
         if "deliverables" not in st.session_state:
             st.session_state.deliverables = [""]
+        if st.form_submit_button("➕ Add Deliverable"):
+            st.session_state.deliverables.append("")
+
+        for i, d in enumerate(st.session_state.deliverables):
+            st.session_state.deliverables[i] = st.text_input(f"Deliverable {i+1}", value=d, key=f"deliverable_{i}")
+
         if "scope" not in st.session_state:
             st.session_state.scope = [""]
+        if st.form_submit_button("➕ Add Scope Item"):
+            st.session_state.scope.append("")
+
+        for i, s in enumerate(st.session_state.scope):
+            st.session_state.scope[i] = st.text_input(f"Scope {i+1}", value=s, key=f"scope_{i}")
+
         if "benefits" not in st.session_state:
             st.session_state.benefits = [""]
+        if st.form_submit_button("➕ Add Benefit"):
+            st.session_state.benefits.append("")
 
-        st.session_state.deliverables = edit_list("Key Deliverables", st.session_state.deliverables, "deliverables")
-        st.session_state.scope = edit_list("Scope", st.session_state.scope, "scope")
-        st.session_state.benefits = edit_list("Benefits", st.session_state.benefits, "benefits")
+        for i, b in enumerate(st.session_state.benefits):
+            st.session_state.benefits[i] = st.text_input(f"Benefit {i+1}", value=b, key=f"benefit_{i}")
 
-        submitted = st.form_submit_button("✅ Save Project")
+        submitted = st.form_submit_button("✅ Submit")
         if submitted:
-            row = [
-                name, sponsor, str(start), str(finish), timeframe,
-                budget, spend, budget - spend,
+            sheet.append_row([
+                name, timeframe,
                 "; ".join(st.session_state.deliverables),
                 "; ".join(st.session_state.scope),
                 "; ".join(st.session_state.benefits)
-            ]
-            save_data(row)
-            st.success("✅ Project added successfully!")
+            ])
+            st.success("Project saved.")
+            st.session_state.page = "Home"
 
+# --- Reports Page ---
 def render_reports():
-    st.header("📈 Reports")
-    df = get_data()
-    if df.empty:
-        st.warning("No data found.")
+    st.title("📊 Reports")
+    data = pd.DataFrame(sheet.get_all_records())
+    if data.empty:
+        st.info("No data to report on.")
         return
 
-    report_type = st.selectbox("Choose report", ["Benefits Overview", "Budget Summary"])
-    
-    if report_type == "Benefits Overview":
-        if "Benefits" not in df.columns:
-            st.error("Missing 'Benefits' column.")
-            return
-        st.subheader("🧩 Benefits Overview")
-        df["Benefit Count"] = df["Benefits"].str.split(";").apply(len)
-        fig = px.bar(df, x="Project Name", y="Benefit Count", title="Benefit Count per Project")
-        st.plotly_chart(fig)
+    col = st.selectbox("Select column to analyse", data.columns)
+    fig = px.histogram(data, x=col)
+    st.plotly_chart(fig)
 
-    elif report_type == "Budget Summary":
-        if "Total Budget" not in df.columns or "Spend to Date" not in df.columns:
-            st.error("Missing budget columns.")
-            return
-        st.subheader("💰 Budget Summary")
-        df["ETC"] = df["Total Budget"] - df["Spend to Date"]
-        fig = px.bar(df.set_index("Project Name")[["Total Budget", "Spend to Date", "ETC"]],
-                     title="Budget Summary by Project")
-        st.plotly_chart(fig)
+# --- List Page ---
+def render_projects_list():
+    st.title("📁 Projects")
+    data = pd.DataFrame(sheet.get_all_records())
+    if data.empty:
+        st.info("No projects yet.")
+        return
 
-# -------------- MAIN ----------------
-if page == "🏠 Home":
-    render_home()
-elif page == "➕ Add Project":
-    render_add_project()
-elif page == "📈 Reports":
-    render_reports()
+    for i, row in data.iterrows():
+        with st.expander(row["Project Name"]):
+            st.write(f"Timeframe: {row['Timeframe / Phases']}")
+            st.write(f"Deliverables: {row['Deliverables']}")
+            st.write(f"Scope: {row['Scope']}")
+            st.write(f"Benefits: {row['Benefits']}")
+            if st.button("✏️ Edit", key=f"edit_{i}"):
+                st.session_state.edit_index = i
+                st.session_state.page = "Add Project"
+
+# --- Page Switcher ---
+def set_page(page_name):
+    st.session_state.page = page_name
+
+# --- Main App ---
+if not st.session_state.logged_in:
+    login()
+else:
+    nav()
+    if st.session_state.page == "Home":
+        render_home()
+    elif st.session_state.page == "Add Project":
+        render_form(edit_index=st.session_state.edit_index)
+    elif st.session_state.page == "Reports":
+        render_reports()
+    elif st.session_state.page == "Projects List":
+        render_projects_list()
