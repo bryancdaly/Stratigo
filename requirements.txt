@@ -1,5 +1,6 @@
 streamlit
-gspread
-oauth2client
 pandas
+faker
+matplotlib
+seaborn
 plotly
