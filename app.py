@@ -1,51 +1,92 @@
-# Stratigo v1.0 — Clean base app with login, navigation, and placeholder pages
+# app.py
+# Stratigo Version 1.0
 
 import streamlit as st
+import pandas as pd
+import random
+import numpy as np
+from faker import Faker
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# --- App Title ---
+# Setup
+fake = Faker()
 st.set_page_config(page_title="Stratigo", layout="wide")
+sns.set(style="whitegrid")
 
-# --- Password Protection ---
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+# --- Sample Data Generation ---
+@st.cache_data
+def generate_project_data(n=50):
+    phases = ['Initiation', 'Planning', 'Execution', 'Monitoring', 'Closure']
+    statuses = ['On Track', 'At Risk', 'Delayed', 'Completed']
+    return pd.DataFrame([{
+        'Project ID': f"PJT-{i+1:03d}",
+        'Project Name': fake.bs().title(),
+        'Status': random.choice(statuses),
+        'Phase': random.choice(phases),
+        'Planned Budget ($k)': round(random.uniform(100, 1500), 2),
+        'Actual Cost ($k)': round(random.uniform(50, 1600), 2),
+        'Project Owner': fake.name(),
+        'Expected Benefits ($k)': round(random.uniform(100, 3000), 2),
+    } for i in range(n)])
 
-def login():
-    st.title("🔐 Welcome to Stratigo")
-    password = st.text_input("Enter password to continue:", type="password")
-    if st.button("Login"):
-        if password == "Stratigo2025":
-            st.session_state.logged_in = True
-            st.success("Login successful. Use the sidebar to navigate.")
-        else:
-            st.error("Incorrect password. Try again.")
+@st.cache_data
+def generate_craid_data(project_ids, n=200):
+    types = ['Constraint', 'Risk', 'Assumption', 'Issue', 'Dependency']
+    severities = ['Low', 'Medium', 'High', 'Critical']
+    return pd.DataFrame([{
+        'CRAID ID': fake.uuid4(),
+        'Project ID': random.choice(project_ids),
+        'Type': random.choice(types),
+        'Description': fake.sentence(nb_words=10),
+        'Severity': random.choice(severities),
+        'Owner': fake.name()
+    } for _ in range(n)])
 
-# --- Navigation Menu ---
-def sidebar_menu():
-    with st.sidebar:
-        st.title("📊 Stratigo Menu")
-        return st.radio("Go to:", ["🏠 Home", "📁 Projects", "📈 Reports"])
+projects = generate_project_data()
+craids = generate_craid_data(projects['Project ID'].tolist())
 
-# --- Placeholder Pages ---
-def show_home():
-    st.title("🏠 Welcome to Stratigo")
-    st.markdown("Use the sidebar to navigate to different features. This is your project portfolio management hub.")
+# --- Pages ---
+def dashboard():
+    st.title("📊 Project Portfolio Dashboard")
+    st.dataframe(projects)
 
-def show_projects():
-    st.title("📁 Projects")
-    st.markdown("This is the Projects section. Functionality for adding, editing, and viewing projects will appear here.")
+    st.subheader("📈 Financial Scatterplot")
+    fig, ax = plt.subplots()
+    sns.scatterplot(data=projects, x='Planned Budget ($k)', y='Actual Cost ($k)', hue='Status', ax=ax)
+    st.pyplot(fig)
 
-def show_reports():
-    st.title("📈 Reports")
-    st.markdown("Reports and insights will appear here. You can later add charts and metrics.")
+    st.subheader("🧩 Projects by Phase")
+    st.bar_chart(projects['Phase'].value_counts())
 
-# --- Main App Logic ---
-if st.session_state.logged_in:
-    page = sidebar_menu()
-    if page == "🏠 Home":
-        show_home()
-    elif page == "📁 Projects":
-        show_projects()
-    elif page == "📈 Reports":
-        show_reports()
-else:
-    login()
+def craid_register():
+    st.title("🧾 CRAID Register")
+    st.dataframe(craids)
+
+    st.subheader("🔍 CRAID by Type and Severity")
+    summary = craids.groupby(['Type', 'Severity']).size().unstack(fill_value=0)
+    st.dataframe(summary)
+
+    st.subheader("📊 CRAID Distribution")
+    st.bar_chart(craids['Type'].value_counts())
+
+def financials():
+    st.title("💰 Financial Overview")
+    df = projects.copy()
+    df['Variance ($k)'] = df['Planned Budget ($k)'] - df['Actual Cost ($k)']
+    st.dataframe(df[['Project ID', 'Project Name', 'Planned Budget ($k)', 'Actual Cost ($k)', 'Variance ($k)', 'Expected Benefits ($k)']])
+
+    st.subheader("📉 Budget Variance Histogram")
+    fig, ax = plt.subplots()
+    sns.histplot(df['Variance ($k)'], bins=20, kde=True, ax=ax)
+    st.pyplot(fig)
+
+# --- Navigation ---
+tab = st.sidebar.radio("🔍 Navigate", ["🏠 Dashboard", "📌 CRAID Register", "💼 Financials"])
+
+if tab == "🏠 Dashboard":
+    dashboard()
+elif tab == "📌 CRAID Register":
+    craid_register()
+elif tab == "💼 Financials":
+    financials()
