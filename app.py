@@ -1,4 +1,4 @@
-# Stratigo v1.1.2 – No rerun, stable auth, debugged
+# Stratigo v1.1.3 – Seamless Login Flow
 import streamlit as st
 import pandas as pd
 import json
@@ -11,7 +11,7 @@ st.set_page_config("Stratigo", layout="wide")
 st.title("📘 Stratigo")
 
 # ───────────────────────────
-# Auth - No experimental rerun
+# Auth — No st.stop(), clean flow
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -21,9 +21,10 @@ if not st.session_state.authenticated:
     if pw == "Stratigo2025":
         st.session_state.authenticated = True
         st.success("✅ Logged in")
-        st.stop()
-    else:
-        st.stop()
+
+if not st.session_state.authenticated:
+    st.info("Please enter the correct password to continue.")
+    st.stop()
 
 # ───────────────────────────
 # Google Sheets
@@ -58,13 +59,13 @@ if menu == "🏠 Home":
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("➕ Add Project"):
-            st.experimental_set_query_params(page="add")
+            st.session_state.menu = "➕ Add Project"
     with col2:
         if st.button("📋 View Projects"):
-            st.experimental_set_query_params(page="projects")
+            st.session_state.menu = "📋 Projects"
     with col3:
         if st.button("📈 View Reports"):
-            st.experimental_set_query_params(page="reports")
+            st.session_state.menu = "📈 Reports"
 
 elif menu == "➕ Add Project":
     st.header("Add New Project")
