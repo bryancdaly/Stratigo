@@ -29,7 +29,7 @@ if not st.session_state.authenticated:
 # ───────────────────────────
 # Google Sheets
 try:
-    creds = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
+creds = st.secrets["GOOGLE_SERVICE_ACCOUNT"]
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     credentials = Credentials.from_service_account_info(creds, scopes=scope)
     gc = gspread.authorize(credentials)
